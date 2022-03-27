@@ -1,4 +1,4 @@
-module djmaze/go-cron
+module github.com/by275/go-cron
 
 go 1.13
 
