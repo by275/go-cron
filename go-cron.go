@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -64,6 +65,10 @@ func stop(c *cron.Cron, wg *sync.WaitGroup) {
 }
 
 func main() {
+
+	if len(os.Args) < 3 {
+		log.Fatalln("Not enough arguments: Usage: go-cron SCHEDULE COMMAND [ARGS]")
+	}
 
 	c, wg := create()
 
