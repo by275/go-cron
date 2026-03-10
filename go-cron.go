@@ -13,7 +13,6 @@ import (
 )
 
 func execute(command string, args []string) {
-
 	println("executing:", command, strings.Join(args, " "))
 
 	cmd := exec.Command(command, args...)
@@ -21,9 +20,9 @@ func execute(command string, args []string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	cmd.Run()
-
-	cmd.Wait()
+	if err := cmd.Run(); err != nil {
+		log.Printf("command failed: %v", err)
+	}
 }
 
 func create() (cr *cron.Cron, wgr *sync.WaitGroup) {
