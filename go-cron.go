@@ -39,16 +39,18 @@ func execute(ctx context.Context, command string, args []string) {
 			log.Printf("command failed: %v", err)
 		}
 	case <-ctx.Done():
+		log.Printf("stopping command process group: %s %s", command, strings.Join(args, " "))
 		killProcessGroup(cmd.Process.Pid, syscall.SIGTERM)
 
 		select {
 		case err := <-done:
-			if err != nil && !errors.Is(ctx.Err(), context.Canceled) {
+			if err != nil && !isShutdownError(ctx, err) {
 				log.Printf("command failed: %v", err)
 			}
 		case <-time.After(5 * time.Second):
+			log.Printf("forcing command process group to exit: %s %s", command, strings.Join(args, " "))
 			killProcessGroup(cmd.Process.Pid, syscall.SIGKILL)
-			if err := <-done; err != nil && !errors.Is(ctx.Err(), context.Canceled) {
+			if err := <-done; err != nil && !isShutdownError(ctx, err) {
 				log.Printf("command failed: %v", err)
 			}
 		}
@@ -59,6 +61,20 @@ func killProcessGroup(pid int, sig syscall.Signal) {
 	if err := syscall.Kill(-pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
 		log.Printf("failed to send %v to process group %d: %v", sig, pid, err)
 	}
+}
+
+func isShutdownError(ctx context.Context, err error) bool {
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		return false
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		status, ok := exitErr.Sys().(syscall.WaitStatus)
+		return ok && (status.Signaled() || status.ExitStatus() != 0)
+	}
+
+	return errors.Is(err, context.Canceled)
 }
 
 func create(ctx context.Context) *cron.Cron {
