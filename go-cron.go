@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/exec"
@@ -12,10 +13,10 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-func execute(command string, args []string) {
+func execute(ctx context.Context, command string, args []string) {
 	println("executing:", command, strings.Join(args, " "))
 
-	cmd := exec.Command(command, args...)
+	cmd := exec.CommandContext(ctx, command, args...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -25,7 +26,7 @@ func execute(command string, args []string) {
 	}
 }
 
-func create() (cr *cron.Cron, wgr *sync.WaitGroup) {
+func create(ctx context.Context) (cr *cron.Cron, wgr *sync.WaitGroup) {
 	var schedule string = os.Args[1]
 	var command string = os.Args[2]
 	var args []string = os.Args[3:len(os.Args)]
@@ -43,7 +44,7 @@ func create() (cr *cron.Cron, wgr *sync.WaitGroup) {
 
 	if _, err := c.AddFunc(schedule, func() {
 		wg.Add(1)
-		execute(command, args)
+		execute(ctx, command, args)
 		wg.Done()
 	}); err != nil {
 		log.Fatalf("invalid schedule %q: %v", schedule, err)
@@ -56,8 +57,9 @@ func start(c *cron.Cron, wg *sync.WaitGroup) {
 	c.Start()
 }
 
-func stop(c *cron.Cron, wg *sync.WaitGroup) {
+func stop(cancel context.CancelFunc, c *cron.Cron, wg *sync.WaitGroup) {
 	println("Stopping")
+	cancel()
 	c.Stop()
 	println("Waiting")
 	wg.Wait()
@@ -71,7 +73,9 @@ func main() {
 		log.Fatalln("Not enough arguments: Usage: go-cron SCHEDULE COMMAND [ARGS]")
 	}
 
-	c, wg := create()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	c, wg := create(ctx)
 
 	go start(c, wg)
 
@@ -79,5 +83,5 @@ func main() {
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	println(<-ch)
 
-	stop(c, wg)
+	stop(cancel, c, wg)
 }
