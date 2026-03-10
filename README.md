@@ -1,7 +1,8 @@
-go-cron
-=========
+# go-cron
 
 Simple golang wrapper over `github.com/robfig/cron` and `os/exec` as a cron replacement
+
+This implementation is intended for Linux/Unix-like systems and uses process groups to terminate spawned commands on shutdown.
 
 ## Usage
 

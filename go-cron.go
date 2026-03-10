@@ -14,8 +14,11 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+const shutdownKillTimeout = 5 * time.Second
+
 func execute(ctx context.Context, command string, args []string) {
-	log.Printf("executing: %s %s", command, strings.Join(args, " "))
+	commandLine := strings.TrimSpace(command + " " + strings.Join(args, " "))
+	log.Printf("executing: %s", commandLine)
 
 	cmd := exec.Command(command, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -39,18 +42,18 @@ func execute(ctx context.Context, command string, args []string) {
 			log.Printf("command failed: %v", err)
 		}
 	case <-ctx.Done():
-		log.Printf("stopping command process group: %s %s", command, strings.Join(args, " "))
+		log.Printf("stopping command process group: %s", commandLine)
 		killProcessGroup(cmd.Process.Pid, syscall.SIGTERM)
 
 		select {
 		case err := <-done:
-			if err != nil && !isShutdownError(ctx, err) {
+			if err != nil && !isShutdownError(err) {
 				log.Printf("command failed: %v", err)
 			}
-		case <-time.After(5 * time.Second):
-			log.Printf("forcing command process group to exit: %s %s", command, strings.Join(args, " "))
+		case <-time.After(shutdownKillTimeout):
+			log.Printf("forcing command process group to exit: %s", commandLine)
 			killProcessGroup(cmd.Process.Pid, syscall.SIGKILL)
-			if err := <-done; err != nil && !isShutdownError(ctx, err) {
+			if err := <-done; err != nil && !isShutdownError(err) {
 				log.Printf("command failed: %v", err)
 			}
 		}
@@ -63,21 +66,17 @@ func killProcessGroup(pid int, sig syscall.Signal) {
 	}
 }
 
-func isShutdownError(ctx context.Context, err error) bool {
-	if !errors.Is(ctx.Err(), context.Canceled) {
-		return false
-	}
-
+func isShutdownError(err error) bool {
 	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		status, ok := exitErr.Sys().(syscall.WaitStatus)
-		return ok && (status.Signaled() || status.ExitStatus() != 0)
+	if !errors.As(err, &exitErr) {
+		return errors.Is(err, context.Canceled)
 	}
 
-	return errors.Is(err, context.Canceled)
+	status, ok := exitErr.Sys().(syscall.WaitStatus)
+	return ok && (status.Signal() == syscall.SIGTERM || status.Signal() == syscall.SIGKILL)
 }
 
-func create(ctx context.Context, schedule string, command string, args []string) *cron.Cron {
+func newCron(ctx context.Context, schedule string, command string, args []string) *cron.Cron {
 	c := cron.New(
 		cron.WithParser(
 			cron.NewParser(
@@ -118,7 +117,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	c := create(ctx, schedule, command, args)
+	c := newCron(ctx, schedule, command, args)
 
 	c.Start()
 
