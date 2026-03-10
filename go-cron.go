@@ -77,11 +77,7 @@ func isShutdownError(ctx context.Context, err error) bool {
 	return errors.Is(err, context.Canceled)
 }
 
-func create(ctx context.Context) *cron.Cron {
-	var schedule string = os.Args[1]
-	var command string = os.Args[2]
-	var args []string = os.Args[3:len(os.Args)]
-
+func create(ctx context.Context, schedule string, command string, args []string) *cron.Cron {
 	c := cron.New(
 		cron.WithParser(
 			cron.NewParser(
@@ -116,9 +112,13 @@ func main() {
 		log.Fatalln("Not enough arguments: Usage: go-cron SCHEDULE COMMAND [ARGS]")
 	}
 
+	schedule := os.Args[1]
+	command := os.Args[2]
+	args := os.Args[3:]
+
 	ctx, cancel := context.WithCancel(context.Background())
 
-	c := create(ctx)
+	c := create(ctx, schedule, command, args)
 
 	c.Start()
 
