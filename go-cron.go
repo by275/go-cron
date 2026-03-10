@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 
 	"github.com/robfig/cron/v3"
@@ -26,12 +25,10 @@ func execute(ctx context.Context, command string, args []string) {
 	}
 }
 
-func create(ctx context.Context) (cr *cron.Cron, wgr *sync.WaitGroup) {
+func create(ctx context.Context) *cron.Cron {
 	var schedule string = os.Args[1]
 	var command string = os.Args[2]
 	var args []string = os.Args[3:len(os.Args)]
-
-	wg := &sync.WaitGroup{}
 
 	c := cron.New(
 		cron.WithParser(
@@ -43,26 +40,24 @@ func create(ctx context.Context) (cr *cron.Cron, wgr *sync.WaitGroup) {
 	println("new cron:", schedule)
 
 	if _, err := c.AddFunc(schedule, func() {
-		wg.Add(1)
 		execute(ctx, command, args)
-		wg.Done()
 	}); err != nil {
 		log.Fatalf("invalid schedule %q: %v", schedule, err)
 	}
 
-	return c, wg
+	return c
 }
 
-func start(c *cron.Cron, wg *sync.WaitGroup) {
+func start(c *cron.Cron) {
 	c.Start()
 }
 
-func stop(cancel context.CancelFunc, c *cron.Cron, wg *sync.WaitGroup) {
+func stop(cancel context.CancelFunc, c *cron.Cron) {
 	println("Stopping")
 	cancel()
-	c.Stop()
+	stopCtx := c.Stop()
 	println("Waiting")
-	wg.Wait()
+	<-stopCtx.Done()
 	println("Exiting")
 	os.Exit(0)
 }
@@ -75,13 +70,13 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	c, wg := create(ctx)
+	c := create(ctx)
 
-	go start(c, wg)
+	go start(c)
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	println(<-ch)
 
-	stop(cancel, c, wg)
+	stop(cancel, c)
 }
