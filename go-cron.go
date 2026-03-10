@@ -48,10 +48,6 @@ func create(ctx context.Context) *cron.Cron {
 	return c
 }
 
-func start(c *cron.Cron) {
-	c.Start()
-}
-
 func stop(cancel context.CancelFunc, c *cron.Cron) {
 	println("Stopping")
 	cancel()
@@ -72,7 +68,7 @@ func main() {
 
 	c := create(ctx)
 
-	go start(c)
+	c.Start()
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
