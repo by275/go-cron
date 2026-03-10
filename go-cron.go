@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/robfig/cron/v3"
 )
@@ -15,13 +17,47 @@ import (
 func execute(ctx context.Context, command string, args []string) {
 	log.Printf("executing: %s %s", command, strings.Join(args, " "))
 
-	cmd := exec.CommandContext(ctx, command, args...)
+	cmd := exec.Command(command, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
 		log.Printf("command failed: %v", err)
+		return
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			log.Printf("command failed: %v", err)
+		}
+	case <-ctx.Done():
+		killProcessGroup(cmd.Process.Pid, syscall.SIGTERM)
+
+		select {
+		case err := <-done:
+			if err != nil && !errors.Is(ctx.Err(), context.Canceled) {
+				log.Printf("command failed: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			killProcessGroup(cmd.Process.Pid, syscall.SIGKILL)
+			if err := <-done; err != nil && !errors.Is(ctx.Err(), context.Canceled) {
+				log.Printf("command failed: %v", err)
+			}
+		}
+	}
+}
+
+func killProcessGroup(pid int, sig syscall.Signal) {
+	if err := syscall.Kill(-pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
+		log.Printf("failed to send %v to process group %d: %v", sig, pid, err)
 	}
 }
 
