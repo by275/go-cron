@@ -117,14 +117,17 @@ func main() {
 	args := os.Args[3:]
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	c := create(ctx, schedule, command, args)
 
 	c.Start()
 
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-	log.Printf("received signal: %s", <-ch)
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignals()
+
+	<-signalCtx.Done()
+	log.Printf("received shutdown signal")
 
 	stop(cancel, c)
 }
