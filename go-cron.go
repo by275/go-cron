@@ -41,11 +41,13 @@ func create() (cr *cron.Cron, wgr *sync.WaitGroup) {
 	)
 	println("new cron:", schedule)
 
-	c.AddFunc(schedule, func() {
+	if _, err := c.AddFunc(schedule, func() {
 		wg.Add(1)
 		execute(command, args)
 		wg.Done()
-	})
+	}); err != nil {
+		log.Fatalf("invalid schedule %q: %v", schedule, err)
+	}
 
 	return c, wg
 }
