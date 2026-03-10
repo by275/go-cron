@@ -13,7 +13,7 @@ import (
 )
 
 func execute(ctx context.Context, command string, args []string) {
-	println("executing:", command, strings.Join(args, " "))
+	log.Printf("executing: %s %s", command, strings.Join(args, " "))
 
 	cmd := exec.CommandContext(ctx, command, args...)
 
@@ -37,7 +37,7 @@ func create(ctx context.Context) *cron.Cron {
 			),
 		),
 	)
-	println("new cron:", schedule)
+	log.Printf("new cron: %s", schedule)
 
 	if _, err := c.AddFunc(schedule, func() {
 		execute(ctx, command, args)
@@ -49,12 +49,12 @@ func create(ctx context.Context) *cron.Cron {
 }
 
 func stop(cancel context.CancelFunc, c *cron.Cron) {
-	println("Stopping")
+	log.Printf("stopping")
 	cancel()
 	stopCtx := c.Stop()
-	println("Waiting")
+	log.Printf("waiting")
 	<-stopCtx.Done()
-	println("Exiting")
+	log.Printf("exiting")
 	os.Exit(0)
 }
 
@@ -72,7 +72,7 @@ func main() {
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-	println(<-ch)
+	log.Printf("received signal: %s", <-ch)
 
 	stop(cancel, c)
 }
