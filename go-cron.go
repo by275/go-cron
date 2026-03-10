@@ -103,7 +103,6 @@ func stop(cancel context.CancelFunc, c *cron.Cron) {
 	log.Printf("waiting")
 	<-stopCtx.Done()
 	log.Printf("exiting")
-	os.Exit(0)
 }
 
 func main() {
